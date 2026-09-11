@@ -19,7 +19,7 @@ class AnalysisRunService
         ]);
 
         $analysisRun = $file->analysisRuns()->create([
-            'status' => 'completed',
+            'status' => 'processing',
             'revenue' => $metrics->revenue,
             'cost' => $metrics->cost,
             'profit' => $metrics->profit,

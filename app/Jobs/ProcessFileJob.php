@@ -34,6 +34,7 @@ class ProcessFileJob implements ShouldQueue
     ): void {
         $startedAt = microtime(true);
         $file = null;
+        $analysisRun = null;
 
         Log::info('file.processing.started', [
             'file_id' => $this->fileId,
@@ -89,9 +90,14 @@ class ProcessFileJob implements ShouldQueue
                 $context
             );
 
+            $analysisRun->update([
+                'status' => 'completed',
+            ]);
+
             Log::info('file.ai_analysis.completed', [
                 'file_id' => $file->id,
                 'analysis_run_id' => $analysisRun->id,
+                'status' => 'completed',
             ]);
 
             $file->update([
@@ -104,6 +110,12 @@ class ProcessFileJob implements ShouldQueue
                 'duration_ms' => (int) ((microtime(true) - $startedAt) * 1000),
             ]);
         } catch (Throwable $exception) {
+            if ($analysisRun !== null) {
+                $analysisRun->update([
+                    'status' => 'failed',
+                ]);
+            }
+
             if ($file !== null) {
                 $file->update([
                     'status' => FileStatus::FAILED,

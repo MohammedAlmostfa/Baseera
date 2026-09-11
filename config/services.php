@@ -2,6 +2,8 @@
 
 return [
 
+    'ca_bundle' => env('CA_BUNDLE_PATH'),
+
     /*
     |--------------------------------------------------------------------------
     | Third Party Services

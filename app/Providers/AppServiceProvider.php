@@ -6,6 +6,7 @@ use App\Contracts\File\FileParserInterface;
 use App\Services\File\FileParserResolver;
 use App\Services\File\Parsers\CsvFileParser;
 use App\Services\File\Parsers\ExcelFileParser;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -22,6 +23,12 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        //
+        $caBundle = config('services.ca_bundle');
+
+        if (is_string($caBundle) && is_file($caBundle)) {
+            Http::globalOptions([
+                'verify' => $caBundle,
+            ]);
+        }
     }
 }
