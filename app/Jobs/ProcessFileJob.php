@@ -1,11 +1,8 @@
 <?php
-
 namespace App\Jobs;
 
-use App\DTOs\Analysis\BusinessAnalysisContextDTO;
 use App\Enums\FileStatus;
 use App\Models\File;
-use App\Services\Analysis\AiAnalysisService;
 use App\Services\Analysis\AnalysisRunService;
 use App\Services\File\FileProcessingService;
 use App\Services\Metrics\MetricsService;
@@ -30,9 +27,9 @@ class ProcessFileJob implements ShouldQueue
         FileProcessingService $processingService,
         MetricsService $metricsService,
         AnalysisRunService $analysisRunService,
-        AiAnalysisService $aiAnalysisService,
     ): void {
         $startedAt = microtime(true);
+
         $file = null;
         $analysisRun = null;
 
@@ -52,6 +49,9 @@ class ProcessFileJob implements ShouldQueue
                 'status' => FileStatus::PROCESSING->value,
             ]);
 
+            /*
+             * Parse → Clean → Normalize
+             */
             $dataset = $processingService->process($file);
 
             Log::info('file.processing.dataset_ready', [
@@ -60,6 +60,9 @@ class ProcessFileJob implements ShouldQueue
                 'column_count' => count($dataset->columns),
             ]);
 
+            /*
+             * Calculate deterministic business metrics.
+             */
             $metrics = $metricsService->calculate($dataset);
 
             Log::info('file.processing.metrics_ready', [
@@ -71,6 +74,9 @@ class ProcessFileJob implements ShouldQueue
                 'profit_margin' => $metrics->profitMargin,
             ]);
 
+            /*
+             * Persist the metrics snapshot.
+             */
             $analysisRun = $analysisRunService->create(
                 $file,
                 $metrics
@@ -81,33 +87,32 @@ class ProcessFileJob implements ShouldQueue
                 'analysis_run_id' => $analysisRun->id,
             ]);
 
-            $context = new BusinessAnalysisContextDTO(
-                metrics: $metrics,
-            );
-
-            $aiAnalysisService->analyze(
-                $analysisRun,
-                $context
-            );
-
-            $analysisRun->update([
-                'status' => 'completed',
-            ]);
-
-            Log::info('file.ai_analysis.completed', [
-                'file_id' => $file->id,
-                'analysis_run_id' => $analysisRun->id,
-                'status' => 'completed',
-            ]);
-
+            /*
+             * Processing is complete.
+             * AI analysis is handled by a separate queue job.
+             */
             $file->update([
-                'status' => FileStatus::ANALYZED,
+                'status' => FileStatus::PROCESSED,
             ]);
 
             Log::info('file.processing.completed', [
                 'file_id' => $file->id,
-                'status' => FileStatus::ANALYZED->value,
-                'duration_ms' => (int) ((microtime(true) - $startedAt) * 1000),
+                'analysis_run_id' => $analysisRun->id,
+                'status' => FileStatus::PROCESSED->value,
+                'duration_ms' => (int) (
+                    (microtime(true) - $startedAt) * 1000
+                ),
+            ]);
+
+            /*
+             * Dispatch AI analysis only after the processing
+             * pipeline has completed successfully.
+             */
+            AIAnalysisJob::dispatch($analysisRun->id);
+
+            Log::info('ai.analysis.job.dispatched', [
+                'file_id' => $file->id,
+                'analysis_run_id' => $analysisRun->id,
             ]);
         } catch (Throwable $exception) {
             if ($analysisRun !== null) {
@@ -124,13 +129,17 @@ class ProcessFileJob implements ShouldQueue
 
             Log::error('file.processing.failed', [
                 'file_id' => $this->fileId,
+                'analysis_run_id' => $analysisRun?->id,
                 'status_updated' => $file !== null,
                 'exception' => $exception::class,
                 'message' => $exception->getMessage(),
-                'duration_ms' => (int) ((microtime(true) - $startedAt) * 1000),
+                'duration_ms' => (int) (
+                    (microtime(true) - $startedAt) * 1000
+                ),
             ]);
 
             throw $exception;
         }
     }
 }
+

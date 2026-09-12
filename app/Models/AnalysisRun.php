@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\DTOs\Metrics\MetricsResultDTO;
 class AnalysisRun extends Model
 {
     protected $fillable = [
@@ -32,8 +33,19 @@ class AnalysisRun extends Model
     {
         return $this->belongsTo(File::class);
     }
+
     public function aiAnalysis(): HasOne
+    {
+        return $this->hasOne(AiAnalysis::class);
+    }
+    public function toMetricsResultDTO(): MetricsResultDTO
 {
-    return $this->hasOne(AiAnalysis::class);
+    return new MetricsResultDTO(
+        revenue: (float) $this->revenue,
+        cost: (float) $this->cost,
+        profit: (float) $this->profit,
+        profitMargin: (float) $this->profit_margin,
+        rowCount: $this->row_count,
+    );
 }
 }
